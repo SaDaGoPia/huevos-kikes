@@ -2,8 +2,8 @@
 
 Sistema de gestión de cadena de suministro (Supply Chain Management) para Huevos Kikes, desarrollado con Django.
 
-- Demo (Render): https://<tu-app>.onrender.com
-- Admin: https://<tu-app>.onrender.com/admin
+- Demo (Render): https://huevos-kikes.onrender.com
+- Admin: https://huevos-kikes.onrender.com/admin
 
 ## ✨ Funcionalidades
 
@@ -88,8 +88,8 @@ GOOGLE_MAPS_API_KEY=<tu-api-key>
 Hosts:
 ```
 # Añade uno de los dos (o ambos)
-RENDER_EXTERNAL_HOSTNAME=<tu-app.onrender.com>
-ALLOWED_HOSTS=localhost,127.0.0.1,<tu-app.onrender.com>
+RENDER_EXTERNAL_HOSTNAME=huevos-kikes.onrender.com
+ALLOWED_HOSTS=localhost,127.0.0.1,huevos-kikes.onrender.com
 ```
 Admin automático (opcional):
 ```
@@ -110,7 +110,7 @@ Estáticos en producción:
 ## 🗺️ Google Maps
 
 - La clave se inyecta a templates vía context processor (`settings.GOOGLE_MAPS_API_KEY`)
-- En Google Cloud Console, restringe la clave por HTTP referrer a tu dominio de Render: `https://<tu-app>.onrender.com/*`
+- En Google Cloud Console, restringe la clave por HTTP referrer a tu dominio de Render: `https://huevos-kikes.onrender.com/*`
 - APIs sugeridas: Maps JavaScript API, Geocoding API
 
 ## 🧩 Integridad de datos (señales)
