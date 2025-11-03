@@ -40,5 +40,5 @@ RUN python manage.py collectstatic --noinput || true
 # Exponer el puerto 8000
 EXPOSE 8000
 
-# Comando para ejecutar Gunicorn
-CMD ["gunicorn", "huevos_kikes_scm.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+# Ejecutar migraciones al iniciar y luego lanzar Gunicorn
+CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn huevos_kikes_scm.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
