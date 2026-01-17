@@ -192,11 +192,25 @@ LOGIN_REDIRECT_URL = 'core:dashboard'
 LOGOUT_REDIRECT_URL = 'core:login'
 
 
-# Email Configuration (Consola para desarrollo, SMTP para producción)
-if DEBUG:
+# Email Configuration
+# Permitir envío real de emails si está configurado EMAIL_HOST_USER
+USE_REAL_EMAIL = os.environ.get('EMAIL_HOST_USER') is not None
+
+if USE_REAL_EMAIL:
+    # Usar SMTP real (Gmail u otro) cuando hay credenciales configuradas
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+    EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+elif DEBUG:
+    # Consola para desarrollo sin credenciales
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'noreply@huevoskikes.com'
 else:
-    # Configurar para producción (ej. SendGrid, Gmail, etc.)
+    # Producción sin credenciales configuradas (fallback a variables requeridas)
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
     EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
@@ -211,13 +225,31 @@ GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', 'AIzaSyCGnW1gnKiXu4I
 
 
 # Security settings for production
+# CSRF trusted origins (schemes required). Read from env, with sensible defaults.
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost,http://127.0.0.1').split(',')
+    if origin.strip()
+]
+
 if not DEBUG:
+    # Trust Render external hostname for CSRF when present
+    if 'RENDER_EXTERNAL_HOSTNAME' in globals() and RENDER_EXTERNAL_HOSTNAME:
+        CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
+
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+
+    # Respect proxy headers (e.g., Render/NGINX) for HTTPS detection
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+    # HTTP Strict Transport Security (enable only in production)
+    SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '31536000'))  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 
 # ===== Configuración de django-simple-captcha =====

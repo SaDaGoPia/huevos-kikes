@@ -4,9 +4,26 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="mb-4">
-        <i class="bi bi-speedometer2"></i> Dashboard - Saldo en Caja
-    </h1>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h1 class="mb-0">
+            <i class="bi bi-speedometer2"></i> Dashboard - Saldo en Caja
+        </h1>
+        <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
+            <select class="form-select" name="range" style="min-width: 170px;">
+                <option value="">Todo</option>
+                <option value="today" {% if rango == 'today' %}selected{% endif %}>Hoy</option>
+                <option value="7d" {% if rango == '7d' %}selected{% endif %}>Últimos 7 días</option>
+                <option value="30d" {% if rango == '30d' %}selected{% endif %}>Últimos 30 días</option>
+                <option value="month" {% if rango == 'month' %}selected{% endif %}>Mes en curso</option>
+            </select>
+            <input type="date" class="form-control" name="start_date" value="{{ start_date }}" title="Desde">
+            <input type="date" class="form-control" name="end_date" value="{{ end_date }}" title="Hasta">
+            <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+            {% if rango or start_date or end_date %}
+            <a class="btn btn-outline-dark" href="?">Limpiar</a>
+            {% endif %}
+        </form>
+    </div>
     
     <!-- Saldo Actual -->
     <div class="row mb-4">
@@ -25,23 +42,36 @@
     
     <!-- Resumen de Ingresos y Egresos -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card shadow-sm border-success">
                 <div class="card-header bg-success text-white">
                     <h5 class="mb-0"><i class="bi bi-arrow-up-circle"></i> Total Ingresos</h5>
                 </div>
                 <div class="card-body text-center">
                     <h2 class="text-success">${{ total_ingresos|floatformat:2 }}</h2>
+                    <p class="text-muted small">{{ rango_label }}</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card shadow-sm border-danger">
                 <div class="card-header bg-danger text-white">
                     <h5 class="mb-0"><i class="bi bi-arrow-down-circle"></i> Total Egresos</h5>
                 </div>
                 <div class="card-body text-center">
                     <h2 class="text-danger">${{ total_egresos|floatformat:2 }}</h2>
+                    <p class="text-muted small">{{ rango_label }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-balance-scale"></i> Neto (Ingreso - Egreso)</h5>
+                </div>
+                <div class="card-body text-center">
+                    <h2 class="{% if total_neto >= 0 %}text-success{% else %}text-danger{% endif %}">${{ total_neto|floatformat:2 }}</h2>
+                    <p class="text-muted small">{{ rango_label }}</p>
                 </div>
             </div>
         </div>
@@ -154,5 +184,82 @@
             </div>
         </div>
     </div>
+
+    <!-- Gráfico 30 días -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Ingresos vs Egresos (últimos 30 días)</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="cashFlowChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+{% block extra_scripts %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    (function() {
+        const labels = {{ chart_labels|safe }};
+        const ingresos = {{ chart_ingresos|safe }};
+        const egresos = {{ chart_egresos|safe }};
+
+        const ctx = document.getElementById('cashFlowChart');
+        if (!ctx) return;
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Ingresos',
+                        data: ingresos,
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40,167,69,0.15)',
+                        tension: 0.2,
+                        fill: true
+                    },
+                    {
+                        label: 'Egresos',
+                        data: egresos,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220,53,69,0.15)',
+                        tension: 0.2,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return '$' + value.toLocaleString(); }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return `${ctx.dataset.label}: $${Number(ctx.parsed.y).toFixed(2)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    })();
+</script>
+{% endblock %}
 {% endblock %}

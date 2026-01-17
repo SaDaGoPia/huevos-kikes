@@ -1,6 +1,11 @@
+import csv
+import io
+import json
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
-from django.views.generic import ListView, DetailView, CreateView, UpdateView
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, View
+from django.db.models import Q, Sum
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db import transaction
@@ -8,6 +13,8 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML
 import tempfile
+from django.utils import timezone
+from openpyxl import Workbook
 
 from .models import Venta, DetalleVenta, Compra, DetalleCompra
 from .forms import (
@@ -15,6 +22,42 @@ from .forms import (
     CompraForm, DetalleCompraFormSet
 )
 from core.utils import registrar_transaccion_caja, get_saldo_actual
+
+
+# Helpers to reuse filtering logic for list and export views
+def filter_ventas_qs(request):
+    qs = Venta.objects.select_related('cliente', 'usuario_vendedor').order_by('-id')
+    q = request.GET.get('q')
+    if q:
+        qs = qs.filter(
+            Q(id__icontains=q) |
+            Q(cliente__nombre__icontains=q) |
+            Q(usuario_vendedor__username__icontains=q)
+        )
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    if start_date:
+        qs = qs.filter(fecha_hora__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(fecha_hora__date__lte=end_date)
+    return qs
+
+
+def filter_compras_qs(request):
+    qs = Compra.objects.select_related('proveedor').order_by('-id')
+    q = request.GET.get('q')
+    if q:
+        qs = qs.filter(
+            Q(id__icontains=q) |
+            Q(proveedor__nombre__icontains=q)
+        )
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    if start_date:
+        qs = qs.filter(fecha_hora__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(fecha_hora__date__lte=end_date)
+    return qs
 
 
 # ==================== VENTAS ====================
@@ -26,6 +69,22 @@ class VentaListView(LoginRequiredMixin, ListView):
     context_object_name = 'ventas'
     paginate_by = 10
     login_url = 'core:login'
+
+    def get_queryset(self):
+        return filter_ventas_qs(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['q'] = self.request.GET.get('q', '')
+        context['start_date'] = self.request.GET.get('start_date', '')
+        context['end_date'] = self.request.GET.get('end_date', '')
+        # Totals of filtered queryset (without pagination)
+        filtered_qs = filter_ventas_qs(self.request)
+        context['total_filtrado'] = filtered_qs.aggregate(total=Sum('total'))['total'] or 0
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context['export_querystring'] = params.urlencode()
+        return context
 
 
 class VentaDetailView(LoginRequiredMixin, DetailView):
@@ -161,6 +220,21 @@ class CompraListView(LoginRequiredMixin, ListView):
     context_object_name = 'compras'
     paginate_by = 10
     login_url = 'core:login'
+
+    def get_queryset(self):
+        return filter_compras_qs(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['q'] = self.request.GET.get('q', '')
+        context['start_date'] = self.request.GET.get('start_date', '')
+        context['end_date'] = self.request.GET.get('end_date', '')
+        filtered_qs = filter_compras_qs(self.request)
+        context['total_filtrado'] = filtered_qs.aggregate(total=Sum('total'))['total'] or 0
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context['export_querystring'] = params.urlencode()
+        return context
 
 
 class CompraDetailView(LoginRequiredMixin, DetailView):
@@ -313,4 +387,160 @@ def generar_factura_pdf(request, pk):
     response.write(result)
 
     return response
+
+
+# ================ EXPORTACIONES CSV =================
+
+class VentaCSVExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_ventas_qs(request)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=ventas.csv'
+
+        writer = csv.writer(response)
+        writer.writerow(['ID', 'Cliente', 'Vendedor', 'Fecha', 'Total'])
+        for venta in qs:
+            fecha_local = timezone.localtime(venta.fecha_hora)
+            writer.writerow([
+                venta.id,
+                venta.cliente.nombre,
+                venta.usuario_vendedor.username,
+                fecha_local.strftime('%Y-%m-%d %H:%M'),
+                f'{venta.total:.2f}',
+            ])
+
+        return response
+
+
+class CompraCSVExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_compras_qs(request)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=compras.csv'
+
+        writer = csv.writer(response)
+        writer.writerow(['ID', 'Proveedor', 'Fecha', 'Medio de Pago', 'Total'])
+        for compra in qs:
+            fecha_local = timezone.localtime(compra.fecha_hora)
+            writer.writerow([
+                compra.id,
+                compra.proveedor.nombre,
+                fecha_local.strftime('%Y-%m-%d %H:%M'),
+                compra.get_medio_pago_display(),
+                f'{compra.total:.2f}',
+            ])
+
+        return response
+
+
+class VentaXLSXExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_ventas_qs(request)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Ventas'
+        ws.append(['ID', 'Cliente', 'Vendedor', 'Fecha', 'Total'])
+
+        for venta in qs:
+            fecha_local = timezone.localtime(venta.fecha_hora)
+            ws.append([
+                venta.id,
+                venta.cliente.nombre,
+                venta.usuario_vendedor.username,
+                fecha_local.strftime('%Y-%m-%d %H:%M'),
+                float(venta.total),
+            ])
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=ventas.xlsx'
+        return response
+
+
+class CompraXLSXExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_compras_qs(request)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Compras'
+        ws.append(['ID', 'Proveedor', 'Fecha', 'Medio de Pago', 'Total'])
+
+        for compra in qs:
+            fecha_local = timezone.localtime(compra.fecha_hora)
+            ws.append([
+                compra.id,
+                compra.proveedor.nombre,
+                fecha_local.strftime('%Y-%m-%d %H:%M'),
+                compra.get_medio_pago_display(),
+                float(compra.total),
+            ])
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=compras.xlsx'
+        return response
+
+
+class VentaPDFExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_ventas_qs(request)
+        total_filtrado = qs.aggregate(total=Sum('total'))['total'] or 0
+
+        html_string = render_to_string('transacciones/venta_list_pdf.html', {
+            'ventas': qs,
+            'total_filtrado': total_filtrado,
+            'generated_at': timezone.localtime(),
+        })
+
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename=ventas.pdf'
+        return response
+
+
+class CompraPDFExportView(LoginRequiredMixin, View):
+    login_url = 'core:login'
+
+    def get(self, request, *args, **kwargs):
+        qs = filter_compras_qs(request)
+        total_filtrado = qs.aggregate(total=Sum('total'))['total'] or 0
+
+        html_string = render_to_string('transacciones/compra_list_pdf.html', {
+            'compras': qs,
+            'total_filtrado': total_filtrado,
+            'generated_at': timezone.localtime(),
+        })
+
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename=compras.pdf'
+        return response
 

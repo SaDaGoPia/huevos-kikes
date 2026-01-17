@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.db.models import Q
 from django.contrib.auth.mixins import LoginRequiredMixin
 from .models import Proveedor
 from .forms import ProveedorForm
@@ -13,6 +14,23 @@ class ProveedorListView(LoginRequiredMixin, ListView):
     context_object_name = 'proveedores'
     paginate_by = 10
     login_url = 'core:login'
+
+    def get_queryset(self):
+        qs = super().get_queryset().order_by('-id')
+        q = self.request.GET.get('q')
+        if q:
+            qs = qs.filter(
+                Q(nombre__icontains=q) |
+                Q(nit__icontains=q) |
+                Q(telefono__icontains=q) |
+                Q(email__icontains=q)
+            )
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['q'] = self.request.GET.get('q', '')
+        return context
 
 
 class ProveedorDetailView(LoginRequiredMixin, DetailView):

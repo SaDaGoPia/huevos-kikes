@@ -3,7 +3,7 @@ URLs para la app core (autenticación y dashboard).
 """
 from django.urls import path
 from django.contrib.auth import views as auth_views
-from .views import CustomLoginView, CustomLogoutView, DashboardView
+from .views import CustomLoginView, CustomLogoutView, DashboardView, CustomPasswordResetView
 
 app_name = 'core'
 
@@ -17,12 +17,7 @@ urlpatterns = [
     
     # Recuperación de contraseña
     path('password-reset/', 
-         auth_views.PasswordResetView.as_view(
-             template_name='core/password_reset.html',
-             email_template_name='core/password_reset_email.html',
-             subject_template_name='core/password_reset_subject.txt',
-             success_url='/password-reset/done/'
-         ), 
+         CustomPasswordResetView.as_view(), 
          name='password_reset'),
     
     path('password-reset/done/', 
