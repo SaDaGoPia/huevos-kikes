@@ -103,8 +103,12 @@ if os.environ.get('DATABASE_URL'):
             default=os.environ.get('DATABASE_URL'),
             conn_max_age=600,
             conn_health_checks=True,
+            ssl_require=False,  # Render maneja SSL automáticamente
         )
     }
+    # Log de conexión (solo muestra el host, no credenciales)
+    db_config = DATABASES['default']
+    print(f"[DB CONFIG] Conectando a PostgreSQL: {db_config.get('HOST', 'N/A')}:{db_config.get('PORT', 'N/A')}/{db_config.get('NAME', 'N/A')}")
 else:
     DATABASES = {
         'default': {
