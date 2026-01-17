@@ -43,4 +43,4 @@ EXPOSE 8000
 # Script de inicio para ejecutar migraciones y luego Gunicorn
 RUN echo '#!/bin/bash\nset -e\n\necho "Running migrations..."\npython manage.py migrate --noinput\n\necho "Collecting static files..."\npython manage.py collectstatic --noinput\n\necho "Creating superuser if needed..."\nif [ -z "$DJANGO_SUPERUSER_USERNAME" ]; then\n  echo "DJANGO_SUPERUSER_USERNAME not set, skipping superuser creation"\nelse\n  python manage.py createsuperuser --noinput 2>/dev/null || echo "Superuser already exists"\nfi\n\necho "Starting Gunicorn..."\ngunicorn huevos_kikes_scm.wsgi:application --bind 0.0.0.0:8000 --workers 3' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]
